@@ -1,7 +1,4 @@
 requests
 argparse
-pymongo
-neovim
 pprint
-BeautifulSoup4
 validators
