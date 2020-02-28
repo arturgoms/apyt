@@ -1,5 +1,4 @@
 # apyt
-=======
 
 Some type of apt implementation for cydia repos
 
