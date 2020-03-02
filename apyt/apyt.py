@@ -30,7 +30,14 @@ class Apyt():
         self.__sourcefile = os.path.join(self.__sourcedir,"sources.json")
         self.__tmpdir = os.path.join(self.__workdir,"tmp")
         self.__repodir = os.path.join(self.__workdir,"repos")
-        
+        self.__reqheaders = {
+        'User-Agent': 'Sileo/1 CFNetwork/976 Darwin/18.2.0',
+        'X-Firmware': '12.1.2',
+        'X-Machine': 'iPhone10,3',
+        'X-Unique-ID': 'df2b5bc80c02907c03dc65e9f38eedfa350711bb',
+        'Accept': '*/*',
+        'Keep-Alive': 'True'
+        }
         if os.path.isdir(self.__sourcedir) is False:
             os.makedirs(self.__sourcedir)  
 
@@ -42,7 +49,7 @@ class Apyt():
 
         if os.path.isfile(self.__sourcefile) is False:
             with open(self.__sourcefile, "wb") as source_file:
-                json.dump([], source_file)
+                json.dump([], source_file, sort_keys=True, indent=4)
 
 
     def add_repo(self, repo_url, release_path="./"):
@@ -75,7 +82,7 @@ class Apyt():
                     data = json.load(source_file)
                 data.append(repo_data)
                 with open(self.__sourcefile, 'w') as source_file:
-                    json.dump(data, source_file)
+                    json.dump(data, source_file, sort_keys=True, indent=4)
                 
                 self.status({"type":self.SUCCESS, "msg":"repo {} added".format(repo_url)})
                 self.__clean_tmp()
@@ -114,16 +121,55 @@ class Apyt():
                 return_err = {"type":self.SUCCESS, "msg":"Repo removed from sources json"}
                 
             else:
-                return_err = {"type":self.ERROR, "msg":"Repo not found"}
+                return_err = {"type":self.ERROR, "msg":"repo {} Repo not found".format(repo_url)}
                 
         if return_err["type"] is not self.ERROR:
             with open(self.__sourcefile, 'w') as source_file:
-                json.dump(data, source_file)
+                json.dump(data, source_file, sort_keys=True, indent=4)
                 return_err = {"type":self.SUCCESS, "msg":"repo {} removed".format(repo_url)} 
     
         self.status(return_err)
         self.__clean_tmp()
         exit(return_err["type"])
+
+
+    def info_repo(self, repo_url):
+        """
+            Remove repo from list
+        """
+        return_err = {"type": self.ERROR, "msg": "DEFAULT ERROR MSG"}
+        data = None
+        response = None
+        with open(self.__sourcefile) as source_file:
+            data = json.load(source_file)
+            for repo in data:
+                if repo["repo"] == repo_url:
+                    if repo["release"] is not None:
+                        with open(repo["release"]) as ReleaseFile:
+                            response = json.load(ReleaseFile)
+                    
+                    if repo["packages"] is not None:
+                        with open(repo["packages"]) as PackagesFile:
+                            packages = json.load(PackagesFile)
+                            unique_pkgs = []
+                            for pkg in packages:
+                                if pkg["Package"] not in unique_pkgs:
+                                    unique_pkgs.append(pkg["Package"] )
+                            response["Packages"] = len(unique_pkgs)
+
+                    break
+
+            if response is not None:
+                pprint.pprint(response)
+                return_err = {"type":self.SUCCESS, "msg":"Release file found"}
+            else:
+                return_err = {"type":self.ERROR, "msg":"repo {} Does not have release file.".format(repo_url)}
+                
+    
+        self.status(return_err)
+        self.__clean_tmp()
+        exit(return_err["type"])
+
 
     def list_repos(self):
         """
@@ -208,7 +254,7 @@ class Apyt():
                         self.status(return_err)
                         data[data.index(repo)]["packages"] = path_package
                         with open(self.__sourcefile, 'w') as source_file:
-                            json.dump(data, source_file)
+                            json.dump(data, source_file, sort_keys=True, indent=4)
 
         except Exception as err:
             print(err)
@@ -287,7 +333,7 @@ class Apyt():
         try:
             md5 = hashlib.md5()
             url = urlparse.urljoin(repo, "Release")
-            file = requests.get(url)
+            file = requests.get(url, headers=self.__reqheaders)
             if file.status_code == 200:
                 data = file.content
                 return_err["msg"] = "File downloaded."
@@ -305,14 +351,14 @@ class Apyt():
                                 return_err["msg"] = "{}".format(err)
                     if release != {}:
                         with open(os.path.join(self.__tmpdir, "{}_{}".format(urlparse.urlparse(repo).netloc, "Release")), "wb") as ReleaseFile:
-                            json.dump(release, ReleaseFile)
+                            json.dump(release, ReleaseFile, sort_keys=True, indent=4)
                             path_release = os.path.join(self.__tmpdir, "{}_{}".format(urlparse.urlparse(repo).netloc, "Release"))
                             return_err["type"] = self.SUCCESS
-                            return_err["msg"] = "Release file retrived."
+                            return_err["msg"] = "repo {} Release file retrived.".format(repo)
 
             else:
                 return_err["type"] = self.WARNING
-                return_err["msg"] = "Release file not found."
+                return_err["msg"] = "repo {} Release file not found.".format(repo)
                 path_release = None
 
         except Exception as err:
@@ -329,7 +375,7 @@ class Apyt():
         """
         return_err = {"type": self.ERROR, "msg": "DEFAULT ERROR MSG"}
         path_packages = None
-        packages_list = ["Packages.bz2", "Packages.gz", "dists/stable/main/binary-iphoneos-arm/Packages.gz",  "dists/stable/main/binary-iphoneos-arm/Packages.bz2", "Packages", ]
+        packages_list = ["Packages.bz2", "Packages.gz", "Packages.xz", "dists/stable/main/binary-iphoneos-arm/Packages.gz",  "dists/stable/main/binary-iphoneos-arm/Packages.bz2", "Packages", ]
 
         file = None
         url = None
@@ -340,7 +386,7 @@ class Apyt():
             for package_name in packages_list:
                 path = urlparse.urlsplit(repo).path + package_name
                 url = urlparse.urljoin(repo, path)
-                file = requests.get(url)
+                file = requests.get(url, headers=self.__reqheaders)
                 if file.status_code == 200:
                     packages_file = tempfile.TemporaryFile(mode = 'w+')
                     packages_file.write(file.content)
@@ -383,13 +429,13 @@ class Apyt():
                         repo_packages.append(package)
                 
                 with open(os.path.join(self.__tmpdir, "{}_{}".format(urlparse.urlparse(repo).netloc, "Packages")), "wb") as PackagesFile:
-                    json.dump(repo_packages, PackagesFile)
+                    json.dump(repo_packages, PackagesFile, sort_keys=True, indent=4)
                     path_packages = os.path.join(self.__tmpdir, "{}_{}".format(urlparse.urlparse(repo).netloc, "Packages"))
                     return_err["type"] = self.SUCCESS
-                    return_err["msg"] = "Packages file retrived"
+                    return_err["msg"] = "repo {} Packages file retrived".format(repo)
 
             else:
-                return_err["msg"] = "Empty package file."
+                return_err["msg"] = "repo {} Empty package file.".format(repo)
             
 
         except Exception as err:
@@ -429,6 +475,7 @@ if __name__ == "__main__":
    
     parser.add_argument('-r',  '--addrepo', help="Add new repo")
     parser.add_argument('-d',  '--rmrepo', help="Remove repo")
+    parser.add_argument('-i',  '--inforepo', help="Info of the repo (Release file)")
     parser.add_argument('-s',  '--search', help="Search for package in all repos")
     parser.add_argument('-lr', '--listrepo', help="List all repos added",default=False, action='store_true')
     parser.add_argument('-lp', '--listpkg', help="List packages from repo, or all packages if no value" , nargs='?', const="all", type=str)
@@ -442,6 +489,9 @@ if __name__ == "__main__":
     
     if args.rmrepo is not None:
         apyt.rm_repo(args.rmrepo)
+
+    if args.inforepo is not None:
+        apyt.info_repo(args.inforepo)
 
     if args.listrepo is not False:
         apyt.list_repos()
