@@ -23,8 +23,8 @@ class Apyt():
     SUCCESS = 0
     MESSAGE = None
 
-    def __init__(self):
-
+    def __init__(self, debug=None):
+        self.debug = debug
         self.__workdir = os.path.dirname(os.path.abspath(__file__))
         self.__sourcedir = os.path.join(self.__workdir,"lists")
         self.__sourcefile = os.path.join(self.__sourcedir,"sources.json")
@@ -203,23 +203,73 @@ class Apyt():
                 for repo in data:        
                     with open(repo["packages"]) as packages_file:
                         packages = json.load(packages_file)
+                        resp_found = {
+                            "Architecture": "", 
+                            "Author": "", 
+                            "Conflicts": "", 
+                            "Depends": "", 
+                            "Depiction": "", 
+                            "Description": "", 
+                            "Filename": "", 
+                            "Homepage": "", 
+                            "Icon": "", 
+                            "MD5sum": "", 
+                            "Maintainer": "", 
+                            "Name": "", 
+                            "Package": "", 
+                            "Pre-Depends": "", 
+                            "Replaces": "", 
+                            "Section": "", 
+                            "SileoDepiction": "",
+                            "Versions":[]                            
+                        }
+                        pkg_found = False
                         for package in packages:
                             try:
-                                if ("Name" in package and package["Name"] == packages_name) or (package["Package"] == packages_name):
-                                    resp_found = {}
+                                if ("Name" in package and packages_name.lower() in package["Name"].lower()) or (package["Package"] == packages_name):
+                                    version = {}
                                     resp_found["Repo"] = repo["repo"]
-                                    resp_found["Package"] = package["Package"]
-                                    resp_found["Version"] = package["Version"]
-                                    resp_found["Description"] = package["Description"]
-                                    response.append(resp_found)
+                                    resp_found["Package"] = package["Package"] if 'Package' in package else None
+                                    resp_found["Description"] = package["Description"] if 'Description' in package else None
+                                    resp_found["Section"] = package["Section"] if 'Section' in package else None
+                                    resp_found["Author"] = package["Author"] if 'Author' in package else None
+                                    resp_found["Name"] = package["Name"] if 'Name' in package else None
+                                    resp_found["Architecture"] = package["Architecture"] if 'Architecture' in package else None
+                                    resp_found["Conflicts"] = package["Conflicts"] if 'Conflicts' in package else None
+                                    resp_found["Depends"] = package["Depends"] if 'Depends' in package else None
+                                    resp_found["Depiction"] = package["Depiction"] if 'Depiction' in package else None
+                                    resp_found["Filename"] = package["Filename"] if 'Filename' in package else None
+                                    resp_found["Homepage"] = package["Homepage"] if 'Homepage' in package else None
+                                    resp_found["Icon"] = package["Icon"] if 'Icon' in package else None
+                                    resp_found["MD5sum"] = package["MD5sum"] if 'MD5sum' in package else None
+                                    resp_found["Maintainer"] = package["Maintainer"] if 'Maintainer' in package else None
+                                    resp_found["Pre-Depends"] = package["Pre-Depends"] if 'Pre-Depends' in package else None
+                                    resp_found["Replaces"] = package["Replaces"] if 'Replaces' in package else None
+                                    resp_found["SileoDepiction"] = (package["Sileodepiction"] if 'Sileodepiction' in package else None or package["SileoDepiction"] if 'SileoDepiction' in package else None)
+
+                                    version["Version"] = package["Version"]
+                                    version["SHA1"] = package["SHA1"] if 'SHA1' in package else None
+                                    version["SHA256"] = package["SHA256"] if 'SHA256' in package else None
+                                    version["Download"] = repo["repo"] + package["Filename"]
+                                    version["Size"] = package["Size"] if 'Size' in package else None
+                                
+                                    resp_found["Versions"].append(version)
+
+                                    
+                                    pkg_found = True
                                     return_err = {"type": self.SUCCESS, "msg": "Packages found."}
                                     
                             except Exception as err:
+                                print(err)
                                 return_err = {"type": self.ERROR, "msg": "Package not found."}
+
+                        if pkg_found:
+                            resp_found["Versions"] = sorted(resp_found["Versions"], key = lambda k:k['Version'], reverse=True)
+                            response.append(resp_found)
 
         if return_err["type"] == self.ERROR:
             return_err = {"type": self.ERROR, "msg": "Package not found"}
-
+        
         pprint.pprint(response)
         self.status(return_err)
         self.__clean_tmp()
@@ -460,12 +510,13 @@ class Apyt():
         shutil.rmtree(self.__tmpdir)
 
     def status(self, msg_status):
-        if msg_status["type"] == self.ERROR:
-            print("ERROR: {}".format(msg_status["msg"]))
-        elif msg_status["type"] == self.WARNING:
-            print("WARNING: {}".format(msg_status["msg"]))
-        elif msg_status["type"] == self.SUCCESS:
-            print("SUCCESS: {}".format(msg_status["msg"]))
+        if self.debug:
+            if msg_status["type"] == self.ERROR:
+                print("ERROR: {}".format(msg_status["msg"]))
+            elif msg_status["type"] == self.WARNING:
+                print("WARNING: {}".format(msg_status["msg"]))
+            elif msg_status["type"] == self.SUCCESS:
+                print("SUCCESS: {}".format(msg_status["msg"]))
 
 
 
@@ -473,6 +524,7 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
    
+    parser.add_argument('-dg',  '--debug', help="Debug mode", default=False, action='store_true')
     parser.add_argument('-r',  '--addrepo', help="Add new repo")
     parser.add_argument('-d',  '--rmrepo', help="Remove repo")
     parser.add_argument('-i',  '--inforepo', help="Info of the repo (Release file)")
@@ -482,7 +534,7 @@ if __name__ == "__main__":
     parser.add_argument('-u',  '--update', help="Update repos",default=False, action='store_true')
 
     args = parser.parse_args()
-    apyt = Apyt()
+    apyt = Apyt(args.debug)
 
     if args.addrepo is not None:
         apyt.add_repo(args.addrepo)
